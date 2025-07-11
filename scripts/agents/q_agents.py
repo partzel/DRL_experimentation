@@ -11,7 +11,7 @@ class BlackJackAgent:
             initial_epsilon: float,
             final_epsilon: float,
             epsilon_decay: float,
-            discounting_factor: float
+            discounting_factor: float = 0.95
     ):
         """
         Creates an Agent that learns to play Black Jack using a Q table
@@ -49,7 +49,7 @@ class BlackJackAgent:
     def get_action(self, obs: tuple[int, int, bool]):
         # explore
         if self.epsilon > np.random.random():
-            return self.env.actoin_space.sample()
+            return self.env.action_space.sample()
         # exploit
         else:
             return int(np.argmax(self.q_values[obs]))
@@ -87,11 +87,11 @@ class BlackJackAgent:
         
 
         # Track error
-        self.training_error.append(temporal_difference)
+        self.training_error.append(abs(temporal_difference))
 
 
     def decay_epsilon(self):
         """
         Reduce exploration over time
         """
-        self.epsilon = np.max(self.final_epsilon, self.epsilon - self.epsilon_decay)
+        self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
