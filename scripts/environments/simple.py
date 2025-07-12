@@ -31,10 +31,12 @@ class GridWorld(gym.Env):
         }
 
         # Define the observation space
-        self.observation_space = {
-            "agent": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int),
-            "target": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int)
-        }
+        self.observation_space = gym.spaces.Dict(
+            {
+                "agent": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int),
+                "target": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int)
+            }
+        )
     
 
     def _get_observation(self):
@@ -62,7 +64,7 @@ class GridWorld(gym.Env):
         }
     
 
-    def reset(self, seed: Optional[float], options: Optional[dict]):
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """
         Reset the internal state of the envrionment to start randomly
         Args:
@@ -76,11 +78,11 @@ class GridWorld(gym.Env):
         super().reset(seed=seed)
 
         # Position agent
-        self._agent_location = self.observation_space.sample()
+        self._agent_location = self.observation_space["agent"].sample()
 
         # Position target ( away from agent )
         while True:
-            self._target_location = self.observation_space.sample()
+            self._target_location = self.observation_space["target"].sample()
             if not np.array_equal(self._agent_location, self._target_location):
                 break;
         

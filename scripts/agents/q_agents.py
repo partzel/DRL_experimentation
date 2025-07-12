@@ -135,7 +135,7 @@ class TargetChaser:
         self.discounting_factor = discounting_factor
 
         # Track training errors
-        self.train_errors = []
+        self.training_error = []
  
 
 
@@ -149,13 +149,15 @@ class TargetChaser:
             int: Action to perform \n\t(0-> right) \n\t(1-> up) \n\t(2-> left) \n\t(3-> down)
 
         """
+        obs_key = self._get_observation_key(obs)
+
         # Bellman equation
         if np.random.random() < self.epsilon:
             # Explore
             return self.env.action_space.sample()
         else:
             # Exploit
-            return int(np.argmax(self.q_values[obs]))
+            return int(np.argmax(self.q_values[obs_key]))
 
 
     def update(self, obs, action, reward, terminated, next_obs):
@@ -170,18 +172,22 @@ class TargetChaser:
             next_obs: New environment state
         """
 
-        future_q_value = (not terminated) * self.q_values[next_obs] 
+        # Convert to hashable vector
+        next_obs_key = self._get_observation_key(next_obs)
+        obs_key = self._get_observation_key(obs)
+
+        future_q_value = (not terminated) * np.max(self.q_values[next_obs_key])
 
         # Bellman equation
         target = reward + self.discounting_factor * future_q_value
-        temporal_difference = target - self.q_values[obs][action]
+        temporal_difference = target - self.q_values[obs_key][action]
 
         # Update q-value in direction of error
-        self.q_values[obs][action] = \
-            self.q_values[obs][action] - self.learning_rate * temporal_difference
+        self.q_values[obs_key][action] = \
+            self.q_values[obs_key][action] - self.learning_rate * temporal_difference
         
         # Record error (DEBUG)
-        self.train_errors.append(abs(temporal_difference))
+        self.training_error.append(abs(temporal_difference))
     
 
     def decay_epsilon(self):
@@ -189,3 +195,12 @@ class TargetChaser:
         Decay exploration rate over time steps
         """
         self.epsilon = max(self.min_epsilon, self.epsilon - self.epsilon_decay)
+
+
+    def _get_observation_key(self, obs):
+        return (
+            obs["agent"][0],
+            obs["agent"][1],
+            obs["target"][0],
+            obs["target"][1],
+        )

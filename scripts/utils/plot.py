@@ -13,7 +13,7 @@ def get_moving_averages(arr, window, convolution_mode):
         mode=convolution_mode
     ) / window
 
-def plot_smooth_curve(agent: agents.BlackJackAgent, env: gym.Env, smoothing_window):
+def plot_smooth_curve(agent, env: gym.Env, smoothing_window):
     """
     Plots a smooth curve for the given table
     """
