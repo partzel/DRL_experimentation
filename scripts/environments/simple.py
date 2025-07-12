@@ -32,8 +32,8 @@ class GridWorld(gym.Env):
 
         # Define the observation space
         self.observation_space = {
-            "agent": gym.spaces.Box(0, self.action_space.n - 1, dtype=int),
-            "target": gym.spaces.Box(0, self.action_space.n - 1, dtype=int)
+            "agent": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int),
+            "target": gym.spaces.Box(0, self.action_space.n - 1, (2,), dtype=int)
         }
     
 
