@@ -3,6 +3,7 @@ import numpy as np
 import gymnasium as gym
 
 
+
 class BlackJackAgent:
     def __init__(
             self,
@@ -204,3 +205,53 @@ class TargetChaser:
             obs["target"][0],
             obs["target"][1],
         )
+    
+
+class ElfQLearner:
+    def __init__(self,
+                 env: gym.Env,
+                 learning_rate:float=0.01,
+                 initial_epsilon:float=1.0,
+                 minimal_epsilon:float=0.1,
+                 epsilon_decay_rate:float=0.01,
+                 gamma:float=0.99):
+        
+        # Initialize environment
+        self.env = env
+
+        # Exploration rate
+        self.epsilon=initial_epsilon
+        self.epsilon_decay_rate=epsilon_decay_rate
+        self.minimal_epsilon=minimal_epsilon
+
+        # Value estimation horizon
+        self.gamma = gamma
+
+        # Training (Q-Learner)
+        self.learning_rate = learning_rate
+        self.q_table = defaultdict(lambda: np.zeros(env.action_space.n), dtype=float)
+
+        # Record error for debug
+        self.training_error = []
+
+    def _greedy_policy(self, obs):
+        return int(np.argmax(self.q_table[obs]))
+
+    def get_action(self, obs):
+        if np.random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            return self._greedy_policy(obs)
+
+    def update(self, old_obs, action, terminated, reward, new_obs):
+        target = reward + self.gamma * (not terminated) * np.max(self.q_table[new_obs])
+        error = target - self.q_table[old_obs][action]
+
+        new_estimate = \
+            self.q_table[old_obs][action] + self.learning_rate * error
+        
+        self.q_table[old_obs][action] = new_estimate
+        self.training_error.append(error)
+
+    def decay_epsilon(self):
+        self.epsilon = max(self.minimal_epsilon, self.epsilon - self.epsilon_decay_rate)

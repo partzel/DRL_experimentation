@@ -69,14 +69,4 @@ for _ in tqdm(range(num_episodes)):
 # %% []
 plot_smooth_curve(chaser, train_env, smoothing_window=500)
 
-
-fig, axs = plt.subplots()
-
-# Distance per step
-axs.set_title("Episode Rewards")
-
-axs.plot(range(len(distance_log)), distance_log)
-axs.set_xlabel("Step")
-axs.set_ylabel("Distance")
-plt.show()
 # %%
