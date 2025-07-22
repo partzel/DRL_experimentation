@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import gymnasium as gym
-
+from tqdm.notebook import tqdm
 
 
 class BlackJackAgent:
@@ -255,3 +255,76 @@ class ElfQLearner:
 
     def decay_epsilon(self):
         self.epsilon = max(self.minimal_epsilon, self.epsilon - self.epsilon_decay_rate)
+
+
+class WindTargetChaser():
+    def __init__(self,
+                 env: gym.Env,
+                 epsilon: int=0.5,
+                 learning_rate: int=0.1,
+                 gamma: int=0.99):
+
+        self.env = env
+        self.epsilon = epsilon
+        self.learning_rate = learning_rate
+        self.gamma = gamma
+
+        self.q_values = defaultdict(lambda: np.zeros(shape=(self.env.action_space.n)))
+
+        # DEBUG
+        self.training_error = []
+
+    # The sole policy for the SARSA algorithm
+    def _get_observation_key(observation):
+        return observation["agent"][0], observation["agent"][1], \
+               observation["target"][0], observation["target"][1]
+
+    def policy(self, observation):
+        if np.random.random() < self.epsilon:
+            # Explore
+            return self.env.action_space.sample()
+        else:
+            # Eploit
+            key = WindTargetChaser._get_observation_key(observation)
+            return int(np.argmax(self.q_values[key]))
+
+    def update(self, old_observation, action, reward, new_observation, terminated):
+        # Calculate using temporal difference
+        # Include not terminated for terminal state = 0
+        old_obs_key = WindTargetChaser._get_observation_key(old_observation)
+        new_obs_key = WindTargetChaser._get_observation_key(new_observation)
+
+        next_action = self.policy(new_observation)
+
+        target = reward + self.gamma * (not terminated)\
+              * self.q_values[new_obs_key][next_action]
+       
+        error = target - self.q_values[old_obs_key][action]
+
+        self.q_values[old_obs_key][action] += \
+            self.learning_rate * error
+
+        self.training_error.append(abs(error))
+
+    def learn(self, num_episodes, num_steps, show_progress=True):
+        progress = range(num_episodes)
+        if show_progress:
+            progress = tqdm(progress)
+
+        for episode in progress:
+            observation, info = self.env.reset()
+            step = 0
+            while True:
+                # Choose action
+                action = self.policy(observation)
+                # Apply action
+                old_obs = observation
+                observation, reward, terminated, _, info = self.env.step(action)
+                # Update q-values
+                self.update(old_obs, action, reward, observation, terminated)
+                
+                # Manage constraints
+                step += 1
+                truncated = step == num_steps
+                if terminated or truncated:
+                    break

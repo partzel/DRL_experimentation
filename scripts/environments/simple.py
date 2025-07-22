@@ -18,6 +18,7 @@ class GridWorld(gym.Env):
         self._agent_location = np.array([-1, -1], dtype=int)
         self._target_location = np.array([-1, -1], dtype=int)
 
+
         # Define the action space
         # 0 -> right   1 -> up   2 -> left   3 -> down
         self.action_space = gym.spaces.Discrete(4)
@@ -123,6 +124,108 @@ class GridWorld(gym.Env):
 
 
         return observation, reward, terminated, truncated, information
+
+
+class WindGridWorld(gym.Env):
+    def __init__(self,
+                 shape: tuple[int, int] = (10, 7),
+                 is_windy: bool=True,
+                 diagonal_actions: bool=False,
+                 support_noop: bool=False,
+                 wind_map: np.ndarray=False):
+
+        # INFO: counting diagonals, did not add 1 for "do nothing"
+        self.is_windy = is_windy
+
+        if diagonal_actions and support_noop:
+            num_actions = 9
+        elif diagonal_actions:
+            num_actions = 8
+        elif not diagonal_actions and support_noop:
+            num_actions = 5
+        else:
+            num_actions = 4
+        
+
+        self.action_space = gym.spaces.Discrete(n=num_actions)
+
+        self.observation_space = gym.spaces.Dict({
+            k: gym.spaces.MultiDiscrete((shape[0], shape[1])) for k in ["agent", "target"]
+        })
+
+        self._agent_location = np.array([-1, -1], dtype=int)
+        self._target_location = np.array([-1, -1], dtype=int)
+
+        # PROCESS: Convert actions to state transitions
+        self._action_to_step = {
+            0: np.array([ 0,  1], dtype=int), 4: np.array([ 1,  1], dtype=int),
+            1: np.array([ 1,  0], dtype=int), 5: np.array([-1,  1], dtype=int),
+            2: np.array([-1,  0], dtype=int), 6: np.array([-1, -1], dtype=int),
+            3: np.array([ 0, -1], dtype=int), 7: np.array([ 1, -1], dtype=int),
+            8: np.array([ 0,  0], dtype=int) # noop
+        }
+
+        # Only used if windy
+        self.wind_map = wind_map
+    
+    def reset(self, seed: int=None, options=None):
+        super().reset(seed=seed, options=options)
+
+        self._agent_location = self.observation_space["agent"].sample()
+        while True:
+            self._target_location = self.observation_space["target"].sample()
+            if not np.array_equal(self._agent_location, self._target_location):
+                break
+    
+        observation = {
+            "agent": self._agent_location,
+            "target": self._target_location
+        }
+
+        # DEBUG Eucledian distance between the target and the agent
+        distance = np.sqrt(np.linalg.norm(self._agent_location - self._target_location, ord=2))
+        info = {
+            "distance": distance
+        }
+
+        return observation, info
+    
+    def step(self, action):
+        # Reward function
+        terminated = np.array_equal(self._agent_location, self._target_location)
+        # No truncation support
+        truncated = False
+
+        reward = 10 if  terminated else -1
+
+        step_direction = self._action_to_step[action]
+
+        if self.is_windy:
+            wind_alt = self.wind_map[
+                self._agent_location[0] - 1,
+                self._agent_location[1] - 1
+            ]
+        else:
+            wind_alt = [0, 0]
+
+        self._agent_location = np.clip(
+            self._agent_location + step_direction + wind_alt,
+            a_min=np.array([0, 0]),
+            a_max=self.observation_space["agent"].nvec - [1, 1]
+        )
+
+        observation = {
+            "agent": self._agent_location,
+            "target": self._target_location
+        }
+
+        # DEBUG Eucledian distance between the target and the agent
+        distance = np.sqrt(np.linalg.norm(self._agent_location - self._target_location, ord=2))
+        info = {
+            "distance": distance
+        }
+
+        return observation, reward, terminated, truncated, info
 
 
 class KArmedTestbed(gym.Env):
