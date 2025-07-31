@@ -123,3 +123,7 @@ venv.bak/
 derby.log
 metastore_db
 spark-warehouse
+
+
+# artifacts
+models/

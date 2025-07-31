@@ -16,7 +16,7 @@ from utils.plot import plot_smooth_curve
 learning_rate = 0.1
 initial_epsilon = 0.1
 final_epsilon = 0.1
-epsilon_decay_rate = 0.999
+epsilon_decay_rate = 0
 discounting_factor = 0.95
 kappa = 0
 # model simulation steps
