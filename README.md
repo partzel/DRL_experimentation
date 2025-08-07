@@ -23,6 +23,7 @@ This repository contains my journey through the fascinating world of reinforceme
 
 ### 🏗️ Repository Structure
 
+```
 📦 DRL/
 ├── 📁 notebooks/           # Jupyter notebooks for exploration & visualization
 │   ├── QLearn-*.ipynb     # Q-Learning experiments
@@ -55,7 +56,7 @@ This repository contains my journey through the fascinating world of reinforceme
 │
 ├── requirements.txt       # Dependencies
 └── README.md             # You are here! 👋
-
+```
 
 ## 🛠️ Technologies & Libraries
 
@@ -79,19 +80,21 @@ This repository contains my journey through the fascinating world of reinforceme
 ## 🚀 Getting Started
 
 ### Prerequisites
-bash
+```bash
 # Create a virtual environment (recommended)
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
 # Install dependencies
+```bash
 pip install -r requirements.txt
-
+```
 
 ### Running Experiments
 
 #### Tabular Methods
-bash
+```bash
 # Run Q-Learning on FrozenLake
 python scripts/QLearn-FrozenLake-V1.py
 
@@ -100,10 +103,10 @@ python scripts/SARSA-WindGridWorld-V0.py
 
 # Try multi-armed bandit
 python scripts/SampleAverage-10ArmedTestbed-V0.py
-
+```
 
 #### Deep RL Methods
-bash
+```bash
 # Train DQN on LunarLander
 python scripts/DQN-LunarLander-V3.py
 
@@ -112,20 +115,20 @@ python scripts/PPO-LunarLander-V3.py
 
 # Train on Atari games
 python scripts/DQN-ALESpaceInvaders-V5.py
-
+```
 
 #### Using RL Zoo3 Configurations
-bash
+```bash
 # Train using pre-configured hyperparameters
 python -m rl_zoo3.train --algo dqn --env ALE/SpaceInvaders-v5 --conf-file rlzoo_configs/DQN-ALESpaceInvaders-V5.yml
-
+```
 
 ### Jupyter Notebooks
 Explore the interactive notebooks for step-by-step learning:
-bash
+```bash
 jupyter lab
 # Navigate to notebooks/ directory
-
+```
 
 ## 🧠 Learning Philosophy
 
@@ -170,7 +173,6 @@ Some resources that have been invaluable in this journey:
 5. **Don't worry about perfect code** - focus on learning and understanding first
 
 ---
-
 *Happy Learning!* 🎓
 
 *Remember: The goal isn't to create production code, but to deeply understand how these algorithms work. Every bug is a learning opportunity, and every experiment brings new insights!*
