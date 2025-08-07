@@ -2,14 +2,20 @@
 import gymnasium as gym
 import ale_py
 from agents.dnn_agents import VisualDQNLearner
+from structures.replay_buffer import ReplayBuffer
 
 import matplotlib.pyplot as plt
 
 gym.register_envs(ale_py)
+# %% Settings
+env_id="ALE/SpaceInvaders-v5"
+experiment_name="experiment_2_fix_replay_buffer"
+tensorboard_logs=f"../models/custom_dqn/tensorboard_logs/runs/{experiment_name}"
+model_save_path="../models/custom_dqn"
 
 # %% [1] Test Run
 test_env = gym.wrappers.RecordEpisodeStatistics(
-    gym.make("ALE/Tetris-v5", render_mode="rgb_array", frameskip=1),
+    gym.make(env_id, render_mode="rgb_array", frameskip=1),
     buffer_length=10000
 )
 
@@ -71,16 +77,41 @@ X, y = next(iter(test_data_loader))
 
 print(f"Example samples batch shape {X.shape}")
 print(f"Example targets batch shape {y.shape}")
-# Test agent learning
-test_agent.learn(num_episodes=1000)
-# %% [3] Plotting
-import numpy as np
-from utils.plot import plot_smooth_curve
-setattr(test_agent, "training_error", np.ones(10_000))
 
-plot_smooth_curve(test_agent, test_env, smoothing_window=1)
+# %% [3] Configuration
+learning_rate = 1e-4
+initial_epsilon = 1.0
+final_epsilon=0.1
+epsilon_decay=0.001
+gamma=0.99
+batch_size=32
+replay_buffer_size=500_000
+stack_size=4
+screen_size=84
 
-# %%
+start_leanring_at=8000
+target_network_lag=1000
+total_num_episodes = 100_000
+model_save_frq=10_000 #steps
 
-print(test_env.return_queue)
-# %%
+# %% [4] Training
+train_env = gym.make(env_id, render_mode="rgb_array")
+agent = VisualDQNLearner(
+    seed=7,
+    env=train_env,
+    start_epsilon=initial_epsilon,
+    final_epsilon=final_epsilon,
+    epsilon_decay=epsilon_decay,
+    replay_buffer_size=replay_buffer_size,
+    batch_size=batch_size,
+    receptive_field=screen_size,
+    time_dim_stack=stack_size,
+    gamma=gamma,
+    target_lag=target_network_lag,
+    tensorboard_logs=tensorboard_logs,
+    save_frequency=model_save_frq,
+    save_path=model_save_path
+)
+
+agent.learn(total_num_episodes)
+train_env.close()

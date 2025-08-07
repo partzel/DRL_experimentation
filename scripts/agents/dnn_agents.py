@@ -1,43 +1,40 @@
 import gymnasium as gym
-
 import torch as th
+import numpy as np
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
-
+from torch.utils.tensorboard import SummaryWriter
 from copy import deepcopy
-import numpy as np
 from tqdm import tqdm
-
-from ..structures.replay_buffer import ReplayBuffer
-from ..structures.q_network import QNetwork
-
+from structures.replay_buffer import ReplayBuffer
+from structures.q_network import QNetwork
 
 class VisualDQNLearner:
     def __init__(self,
                  env: gym.Env,
-
-                 # Exploration Params
+                 seed: int = 42,  # Added seed parameter
                  start_epsilon: float=1.0,
                  final_epsilon: float=0.1,
                  epsilon_decay: float=0.01,
-
-                 # Replay Memory Params
                  replay_buffer_size: int=100_000,
                  batch_size: int=32,
                  gamma: float=0.99,
-
-                 # DNN Params
-                 target_network_lag: int=1000,
                  time_dim_stack: int=4,
                  receptive_field: int=84,
-
-                 # Learning Control
                  start_learn_steps: int=8000,
                  target_lag: int=10_000,
                  learning_rate: float=0.0001,
-                 save_frequency: int=100_000, 
-                 ):
+                 save_frequency: int=1000,
+                 save_path: str | None = None,
+                 tensorboard_logs: str | None = None):
+        
+        # Set random seeds
+        self.seed = seed
+        np.random.seed(seed)
+        th.manual_seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
         
         self.env = env
         self.device = self._get_device()
@@ -51,7 +48,7 @@ class VisualDQNLearner:
         self.batch_size = batch_size
         self.time_dim_stack = time_dim_stack
         self.learning_rate = learning_rate
-        self.target_network_lag = target_network_lag
+        self.target_lag = target_lag
         self.gamma = gamma
 
         # Dynamically compute flattened feature size
@@ -67,65 +64,56 @@ class VisualDQNLearner:
 
         self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(self.q_online.parameters(),
-                                    lr=self.learning_rate)
+                                  lr=self.learning_rate)
         self.data_generator = th.Generator()
+        self.data_generator.manual_seed(seed)  # Seed the data generator
 
-        # Replay buffer init (TODO: refactor in own class)
+        # Replay buffer init
         self.replay_buffer = ReplayBuffer(
             env=self.env,
             max_buffer_size=replay_buffer_size,
             target_dnn=self.q_online,
             device=self.device,
-            discounting_factor=gamma
+            discounting_factor=gamma,
+            seed=seed  # Pass seed to replay buffer
         )
 
         # Learning control
         self.start_learn_steps = start_learn_steps
         self.save_frequencey = save_frequency
-        self.target_lag = target_lag
+        self.save_path = save_path
 
         # Preprocessing
         self.receptive_field = receptive_field
 
-
+        self.tensorboard_logs = tensorboard_logs
+        if self.tensorboard_logs:
+            self.writer = SummaryWriter(log_dir=tensorboard_logs)
+            self.total_steps = 0
 
     def greedy_policy(self, observation):
         """
         Returns the best action according to a greedy policy
-
-        Args:
-            observation: the observation resulting from the environment,
-            must be a 4x84x84 visual sample of the current state
         """
-
         with th.no_grad():
-            preprocessed_obs = self.replay_buffer \
-            ._preprocess_observations(
+            preprocessed_obs = self.replay_buffer._preprocess_observations(
                 observation
             )
-
             return int(th.argmax(
-                self.q_online(preprocessed_obs.unsqueeze(0)
-                .to(self.device))
+                self.q_online(preprocessed_obs.unsqueeze(0).to(self.device))
             ).item())
-
 
     def epsilon_greedy_policy(self, observation):
         """
-        Returns the best action according to an epsilon greedy policy with
-        random uniform probability
-
-        Args:
-            observation: the observation resulting from the environment,
-            must be a 4x84x84 visual sample of the current state
+        Returns the best action according to an epsilon greedy policy
         """
-
-        p = np.random.random()
+        # Use seeded NumPy random number generator
+        rng = np.random.default_rng(self.seed)
+        p = rng.random()
         if p < self.epsilon:
             return self.env.action_space.sample()
         else:
             return self.greedy_policy(observation)
-       
 
     def learn(self, num_episodes=100_000, max_episode_steps=10_000, display_progress=True):
         progress = range(num_episodes)
@@ -133,24 +121,28 @@ class VisualDQNLearner:
             progress = tqdm(progress)
 
         for episode in progress:
-            obs, info = self.env.reset()
+            if self.tensorboard_logs:
+                episode_reward = 0.0
+                episode_length = 0
 
-            old_obs_stack = [obs] * 4
-            new_obs_stack = [obs] * 4
+            obs, info = self.env.reset(seed=self.seed + episode)  # Use episode-specific seed
+
+            old_obs_stack = [obs] * self.time_dim_stack
+            new_obs_stack = [obs] * self.time_dim_stack
             stack_index = 0
 
             for step in range(max_episode_steps):
-                # Reset counter
-
                 action = self.epsilon_greedy_policy(old_obs_stack)
-                new_obs, reward, terminated, truncated, info = \
-                    self.env.step(action)
+                new_obs, reward, terminated, truncated, info = self.env.step(action)
+
+                if self.tensorboard_logs:
+                    episode_reward += reward
+                    episode_length += 1
+                    self.total_steps += 1
 
                 done = terminated or truncated
 
-
-                if len(old_obs_stack) == self.time_dim_stack:
-
+                if stack_index == self.time_dim_stack:
                     self.replay_buffer.add_sample(
                         old_obs_stack,
                         action,
@@ -158,19 +150,25 @@ class VisualDQNLearner:
                         new_obs_stack,
                         done
                     )
-
-                    old_obs_stack = [obs] * 4
-                    new_obs_stack = [new_obs] * 4
+                    old_obs_stack = [obs] * self.time_dim_stack
+                    new_obs_stack = [new_obs] * self.time_dim_stack
                     stack_index = 0
-
 
                 if step > self.start_learn_steps:
                     self._update_online(step)
 
-                # Sync Target and Online-Target DNNs periodically
                 if step % self.target_lag == 0:
-                    self.q_target.load_state_dict(
-                        self.q_online.state_dict()
+                    self.q_target.load_state_dict(self.q_online.state_dict())
+
+                if step % self.save_frequencey == 0 and self.save_path:
+                    # Save model
+                    th.save(self.q_target, f"{self.save_path}/model_e{episode}s{step}.pth")
+
+                    # Save replay-buffer
+                    self.replay_buffer.save_to_file(
+                        self.save_path,
+                        episode,
+                        step
                     )
 
                 old_obs_stack[stack_index] = obs
@@ -179,16 +177,17 @@ class VisualDQNLearner:
 
                 if done:
                     self._decay_epsilon()
+                    if self.tensorboard_logs:
+                        self.writer.add_scalar("Episode/Reward", episode_reward, episode)
+                        self.writer.add_scalar("Episode/Length", episode_length, episode)
+                        self.writer.add_scalar("Episode/Epsilon", self.epsilon, episode)
                     break
 
                 obs = new_obs
 
-
-    
     def _update_online(self, step):
         self.q_online.train()
-
-        self.data_generator.manual_seed(step)
+        self.data_generator.manual_seed(self.seed + step)  # Use step-specific seed
         data_loader = DataLoader(
             dataset=self.replay_buffer,
             batch_size=self.batch_size,
@@ -197,29 +196,24 @@ class VisualDQNLearner:
         )
 
         observations, q_values = next(iter(data_loader))
-
         observations = observations.to(self.device)
         q_values = q_values.to(self.device)
 
-        # PyTorch training
         y_hat = self.q_online(observations)
         loss = self.criterion(y_hat, q_values)
 
-        # Backward
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
+        if self.tensorboard_logs:
+            self.writer.add_scalar("Loss/Training", loss.item(), self.total_steps)
 
     def _get_device(self):
-        """
-        Sets the device on which the DNNs of the DQN learner will be trained
-        """
         if th.cuda.is_available():
             return "cuda"
         else:
             return "cpu"
-    
 
     def _decay_epsilon(self):
         self.epsilon = max(self.min_epsilon, self.epsilon - self.epsilon_decay)
