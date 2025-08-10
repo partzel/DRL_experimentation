@@ -127,3 +127,6 @@ spark-warehouse
 
 # artifacts
 models/
+wandb
+tb*
+tensorboard*
