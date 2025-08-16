@@ -1,14 +1,25 @@
 import gymnasium as gym
-import torch as th
 import numpy as np
+
+import torch as th
 from torch import nn
 from torch import optim
+from torch.distributions import Categorical
+
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from clearml import Task
+from logging import Logger
+
+import random
 from copy import deepcopy
 from tqdm import tqdm
+from typing import Hashable
+from collections import deque
+
 from structures.replay_buffer import ReplayBuffer
 from structures.q_network import QNetwork
+from structures.mlp import Mlp
 
 class VisualDQNLearner:
     def __init__(self,
@@ -217,3 +228,143 @@ class VisualDQNLearner:
 
     def _decay_epsilon(self):
         self.epsilon = max(self.min_epsilon, self.epsilon - self.epsilon_decay)
+
+
+class PolicyGradientLearner:
+    def __init__(self,
+                 env: gym.Env,
+                 gamma: float = 0.95,
+                 learning_rate: float = 1e-5,
+                 seed: Hashable = 42,
+
+                 # DNN specific
+                 n_hidden: int = 8,
+                 device = None,
+
+                 # Log
+                 info_log_interval: int = 1000,
+                 clearml_task: Task = None,
+                 logger: Logger = None,
+    ):
+        self.seed = seed
+        self.set_seed()
+
+        self.env = env
+        self.gamma = gamma
+        self.learning_rate = learning_rate
+
+        # Policy
+        n_input = self.env.observation_space.shape[0]
+        n_output = self.env.action_space.n
+
+        self.policy = Mlp(
+            n_input,
+            n_hidden,
+            n_output,
+            device=device
+        )
+
+        self.optimizer = optim.Adam(
+            params=self.policy.parameters(),
+            lr = self.learning_rate
+        )
+
+        # Logging
+        self.inf_log_interval = info_log_interval
+        self.logger = logger if logger else Logger(__name__)
+        self.clearml_task = clearml_task
+        if self.clearml_task:
+            self.clearml_logger = self.clearml_task.get_logger()
+
+
+    def get_action(self, observation):
+        self.set_seed()
+
+        obs_input = th.from_numpy(observation) \
+            .float() \
+            .unsqueeze(0) \
+            .to(self.policy.device)
+        
+        probabilities = self.policy(obs_input)
+        distribution = Categorical(probabilities)
+
+        action = distribution.sample()
+        log_proba = distribution.log_prob(action)
+
+        return action.item(), log_proba
+
+
+
+    def reinforce(self,
+                  num_episodes: int,
+                  max_num_steps: int = 1000,
+                  score_buffer_size: int = 100):
+
+        scores_buffer = deque(maxlen=score_buffer_size)
+        scores = []
+
+        for episode in range(num_episodes):
+            ep_rewards = []
+            ep_log_probs = []
+
+            # Sample trajectory
+            observation, _ = self.env.reset()
+            for step in range(max_num_steps):
+                action, log_prob = self.get_action(observation)
+                new_observation, reward, terminated, truncated, _ = \
+                    self.env.step(action)
+
+                ep_rewards.append(reward)
+                ep_log_probs.append(log_prob)
+
+                if terminated or truncated:
+                    break
+
+                observation = new_observation
+            
+            scores.append(sum(ep_rewards))
+            scores_buffer.append(sum(ep_rewards))
+
+            # Calculate the returns Gt for each step (forget past)
+            num_steps = len(ep_log_probs)
+            ep_returns = deque(maxlen=num_steps)
+            for i in range(num_steps)[::-1]:
+                g_t = self.gamma * (ep_returns[0] if ep_returns else 0) \
+                        + ep_rewards[i]
+                
+                ep_returns.appendleft(g_t)
+
+            # Objective function formulated as loss for grad desc
+            eps = th.finfo(th.float32).eps
+            ep_returns = th.tensor(ep_returns)
+            ep_returns = (ep_returns - ep_returns.mean()) / (ep_returns.std() + eps) # normalize
+
+            indiv_losses = []
+            for log_prob, step_return in zip(ep_log_probs, ep_returns):
+                indiv_losses.append(-log_prob * step_return)
+            
+            loss = th.cat(indiv_losses).sum()
+
+            # Gradient descent
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+            # Logging
+            if episode % self.inf_log_interval == 0:
+                avg_score = np.mean(scores_buffer)
+                self.logger.info(f"Episode {episode}:\n\t AVG Score {avg_score:.2f}")
+
+                if self.clearml_logger:
+                    self.clearml_logger.report_scalar(
+                        title="Average Episode Scores",
+                        series="episode-scores",
+                        value=avg_score,
+                        iteration=episode
+                    )
+    
+
+    def set_seed(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        th.manual_seed(seed=self.seed)

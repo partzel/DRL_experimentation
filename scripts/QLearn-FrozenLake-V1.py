@@ -59,10 +59,10 @@ train_env.close()
 from utils.plot import plot_smooth_curve
 plot_smooth_curve(agent, train_env, smoothing_window=50_00)
 # %% [4] Evaluation
-from utils.evaluation import evaluate_agent
+from utils.evaluation import evaluate_q_agent
 
 eval_env = gym.make("FrozenLake-v1", desc=generate_random_map(size=4), is_slippery=False)
-mean_reward, std_reward = evaluate_agent(
+mean_reward, std_reward = evaluate_q_agent(
     agent,
     eval_env,
     max_steps=20,
