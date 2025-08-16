@@ -10,7 +10,7 @@ class Mlp(nn.Module):
                  n_output,
                  device=None
         ):
-        super().__init__()
+        super(Mlp, self).__init__()
 
         self.device = device
         if not self.device:
@@ -24,4 +24,4 @@ class Mlp(nn.Module):
         x = F.relu(x)
         x = self.fc_2(x)
         
-        return F.softmax(x, dim=0)
+        return F.softmax(x, dim=1)

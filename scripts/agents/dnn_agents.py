@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from clearml import Task
 from logging import Logger
+import optuna
 
 import random
 from copy import deepcopy
@@ -20,6 +21,7 @@ from collections import deque
 from structures.replay_buffer import ReplayBuffer
 from structures.q_network import QNetwork
 from structures.mlp import Mlp
+from utils.evaluation import evaluate_policybased_agent
 
 class VisualDQNLearner:
     def __init__(self,
@@ -232,6 +234,7 @@ class VisualDQNLearner:
 
 class PolicyGradientLearner:
     def __init__(self,
+                 env_id: str,
                  env: gym.Env,
                  gamma: float = 0.95,
                  learning_rate: float = 1e-5,
@@ -240,6 +243,8 @@ class PolicyGradientLearner:
                  # DNN specific
                  n_hidden: int = 8,
                  device = None,
+                 optuna_trial: optuna.Trial = None,
+                 optuna_interval: int = 1000,
 
                  # Log
                  info_log_interval: int = 1000,
@@ -250,6 +255,7 @@ class PolicyGradientLearner:
         self.set_seed()
 
         self.env = env
+        self.env_id = env_id
         self.gamma = gamma
         self.learning_rate = learning_rate
 
@@ -269,6 +275,10 @@ class PolicyGradientLearner:
             lr = self.learning_rate
         )
 
+        # Optuna
+        self.optuna_trial = optuna_trial
+        self.optuna_interval = optuna_interval
+
         # Logging
         self.inf_log_interval = info_log_interval
         self.logger = logger if logger else Logger(__name__)
@@ -278,8 +288,6 @@ class PolicyGradientLearner:
 
 
     def get_action(self, observation):
-        self.set_seed()
-
         obs_input = th.from_numpy(observation) \
             .float() \
             .unsqueeze(0) \
@@ -299,6 +307,8 @@ class PolicyGradientLearner:
                   num_episodes: int,
                   max_num_steps: int = 1000,
                   score_buffer_size: int = 100):
+
+        total_steps = 0
 
         scores_buffer = deque(maxlen=score_buffer_size)
         scores = []
@@ -321,6 +331,23 @@ class PolicyGradientLearner:
                     break
 
                 observation = new_observation
+                total_steps += 1
+
+                is_optuna_trial = self.optuna_interval and self.optuna_trial
+                if is_optuna_trial and total_steps % self.optuna_interval == 0:
+                    self.policy.eval()
+                    eval_env = gym.make(self.env_id, render_mode="rgb_array")
+                    mean_reward, _ = evaluate_policybased_agent(
+                        eval_env, max_steps=max_num_steps,
+                        n_eval_episodes=5, agent=self
+                    )
+                    self.policy.train()
+                    eval_env.close()
+
+                    self.optuna_trial.report(mean_reward, total_steps)
+                    if self.optuna_trial.should_prune():
+                        raise optuna.TrialPruned()
+
             
             scores.append(sum(ep_rewards))
             scores_buffer.append(sum(ep_rewards))
