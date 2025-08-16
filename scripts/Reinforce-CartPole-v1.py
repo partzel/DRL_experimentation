@@ -2,6 +2,7 @@ import gymnasium as gym
 
 from agents.dnn_agents import PolicyGradientLearner
 from utils.evaluation import evaluate_policybased_agent
+from utils.hf_utils import push_to_hub
 
 from clearml import Task
 from logging import Logger
@@ -58,3 +59,15 @@ if __name__ == "__main__":
         logger.info(f"Final evaluation:\n\tmean reward: {mean_reward} +/- {std_reward}")
 
         eval_env.close()
+    
+    # Push to HuggingFace
+    push_to_hub(
+        repo_id=f"partzel/PolicyGradient-CartPole-v1-{num_train_episodes}",
+        agent=agent,
+        hyperparameters=hyperparameters,
+        train_env=train_env,
+        eval_env=eval_env,
+        env_id=env_id,
+        num_eval_episodes=num_eval_episodes,
+        max_num_steps=max_num_steps
+    )
