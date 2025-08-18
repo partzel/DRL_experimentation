@@ -241,7 +241,8 @@ class PolicyGradientLearner:
                  seed: Hashable = 42,
 
                  # DNN specific
-                 n_hidden: int = 8,
+                 n_hidden_units: int = 8,
+                 n_hidden_layers: int = 1,
                  device = None,
                  optuna_trial: optuna.Trial = None,
                  optuna_interval: int = 1000,
@@ -250,6 +251,9 @@ class PolicyGradientLearner:
                  info_log_interval: int = 1000,
                  clearml_task: Task = None,
                  logger: Logger = None,
+
+                 # Eval env
+                 env_facotry=None
     ):
         self.seed = seed
         self.set_seed()
@@ -265,7 +269,8 @@ class PolicyGradientLearner:
 
         self.policy = Mlp(
             n_input,
-            n_hidden,
+            n_hidden_units,
+            n_hidden_layers,
             n_output,
             device=device
         )
@@ -278,6 +283,9 @@ class PolicyGradientLearner:
         # Optuna
         self.optuna_trial = optuna_trial
         self.optuna_interval = optuna_interval
+        self.env_factory = env_facotry
+        if not self.env_factory:
+            self.env_factory = lambda: gym.make(self.env_id, render_mode="rgb_array")
 
         # Logging
         self.inf_log_interval = info_log_interval
@@ -336,7 +344,7 @@ class PolicyGradientLearner:
                 is_optuna_trial = self.optuna_interval and self.optuna_trial
                 if is_optuna_trial and total_steps % self.optuna_interval == 0:
                     self.policy.eval()
-                    eval_env = gym.make(self.env_id, render_mode="rgb_array")
+                    eval_env = self.env_factory()
                     mean_reward, _ = evaluate_policybased_agent(
                         eval_env, max_steps=max_num_steps,
                         n_eval_episodes=5, agent=self
