@@ -34,7 +34,7 @@ optuna_log_interval = 100
 trial_train_episodes = 10_000
 trial_eval_episodes = 5
 
-best_train_episodes = 500_000
+best_train_episodes = 50_000
 best_eval_episodes = 10
 
 max_num_steps = 1000
@@ -208,11 +208,17 @@ if __name__ == "__main__":
 
 
     # Push to HuggingFace
+    hugging_face_info = {
+        **hyperparameters,
+        "n_training_episodes": best_train_episodes,
+        "n_eval_apisodes": best_eval_episodes,
+        "seed": seed,
+    }
     hugging_face_user = os.environ["HF_USER"]
     push_to_hub(
         repo_id=f"{hugging_face_user}/PolicyGradient-{env_id}-{best_train_episodes}",
         agent=agent,
-        hyperparameters=hyperparameters,
+        hyperparameters=hugging_face_info,
         train_env=train_env,
         eval_env=eval_env,
         env_id=env_id,
