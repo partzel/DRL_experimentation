@@ -256,10 +256,10 @@ class PolicyGradientLearner:
                  env_facotry=None
     ):
         self.seed = seed
-        self.set_seed()
-
-        self.env = env
         self.env_id = env_id
+        self.env = env
+
+        self.set_seed()
         self.gamma = gamma
         self.learning_rate = learning_rate
 
@@ -345,6 +345,9 @@ class PolicyGradientLearner:
                 if is_optuna_trial and total_steps % self.optuna_interval == 0:
                     self.policy.eval()
                     eval_env = self.env_factory()
+                    eval_env.action_space.seed(self.seed + total_steps)
+                    eval_env.observation_space.seed(self.seed + total_steps)
+
                     mean_reward, _ = evaluate_policybased_agent(
                         eval_env, max_steps=max_num_steps,
                         n_eval_episodes=5, agent=self
@@ -400,6 +403,8 @@ class PolicyGradientLearner:
     
 
     def set_seed(self):
+        self.env.action_space.seed(self.seed)
+        self.env.observation_space.seed(self.seed)
         random.seed(self.seed)
         np.random.seed(self.seed)
         th.manual_seed(seed=self.seed)
